@@ -224,7 +224,10 @@
           <div class="muted" id="aiScoreMsg">Click <strong>Let AI Guess</strong> to evaluate.</div>
         </div>
         <div class="ppl-box">
-          <span class="muted">Sentence Perplexity</span>
+          <div>
+            <div class="muted"><strong>Sentence Perplexity</strong></div>
+            <div class="muted" style="font-size: 0.78rem;">Model uncertainty over the text (independent of Score)</div>
+          </div>
           <span class="ppl-value" id="pplValue">—</span>
         </div>
         <div id="candList" class="cand-list"></div>
@@ -388,10 +391,30 @@
       generatedBox.style.display = "block";
     }
 
+    async function updateLivePerplexity() {
+      const text = sentenceInput.value.trim();
+      if (!text) {
+        pplValue.textContent = "—";
+        return;
+      }
+      const res = await fetch("/api/perplexity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json();
+      if (res.ok && data.perplexity !== null) {
+        pplValue.textContent = data.perplexity;
+      }
+    }
+
     thresholdInput.addEventListener("input", () => {
       thresholdLabel.textContent = Number(thresholdInput.value).toFixed(3);
     });
-    sentenceInput.addEventListener("input", renderWordChips);
+    sentenceInput.addEventListener("input", () => {
+      renderWordChips();
+      updateLivePerplexity();
+    });
     document.getElementById("guessBtn").onclick = runAiGuess;
     document.getElementById("genSentenceBtn").onclick = () => generate("sentence");
     document.getElementById("genPhraseBtn").onclick = () => generate("phrase");
@@ -410,6 +433,7 @@
 
     renderWordChips();
     loadState();
+    updateLivePerplexity();
   </script>
 </body>
 </html>

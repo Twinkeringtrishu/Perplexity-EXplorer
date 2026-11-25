@@ -121,6 +121,15 @@ def make_handler(model, log_path: Path):
                 )
                 return
 
+            if self.path == "/api/perplexity":
+                text = str(data.get("text", "")).strip()
+                if not text:
+                    self._send_json({"perplexity": None})
+                    return
+                ppl = model.compute_perplexity(text)
+                self._send_json({"perplexity": round(ppl, 2)})
+                return
+
             if self.path == "/api/generate":
                 prompt = str(data.get("text", "")).strip()
                 mode = str(data.get("mode", "sentence"))
