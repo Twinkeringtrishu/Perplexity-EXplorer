@@ -1,17 +1,25 @@
 import argparse
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from utils import (
-    UNSURE_ANSWERS,
+    ai_guess_next,
     append_score_log,
     load_model,
     load_score_log,
-    update_score,
+    score_ai_guess,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _split_prefix_and_target(text: str) -> tuple[str, str] | None:
+    tokens = re.findall(r"[a-zA-Z0-9']+", text.strip())
+    if len(tokens) < 2:
+        return None
+    return " ".join(tokens[:-1]), tokens[-1].lower()
 
 
 def make_handler(model, log_path: Path):
@@ -53,44 +61,28 @@ def make_handler(model, log_path: Path):
         def do_POST(self):
             data = self._read_json()
 
-            if self.path == "/api/predict":
+            if self.path == "/api/guess":
                 text = str(data.get("text", "")).strip()
                 top_k = max(1, min(int(data.get("top_k", 5)), 15))
-                if not text:
-                    self._send_json({"error": "Please enter a sentence or short phrase."}, status=400)
+                threshold = float(data.get("unsure_threshold", 0.015))
+                split = _split_prefix_and_target(text)
+                if not split:
+                    self._send_json(
+                        {"error": "Please enter at least 2 words so AI can guess the last word."},
+                        status=400,
+                    )
                     return
-                candidates, probs = model.predict_next(text, top_k=top_k)
-                ppl = model.compute_perplexity(text)
-                self._send_json(
-                    {
-                        "text": text,
-                        "candidates": [
-                            {"word": w, "probability": round(p, 6)}
-                            for w, p in zip(candidates, probs)
-                        ],
-                        "perplexity": round(ppl, 2),
-                    }
+
+                prefix, actual_word = split
+                ai_guess, is_unsure, candidates, probs = ai_guess_next(
+                    model, None, prefix, top_k=top_k, unsure_threshold=threshold
                 )
-                return
-
-            if self.path == "/api/answer":
-                text = str(data.get("text", "")).strip()
-                answer = str(data.get("answer", "")).strip()
-                top_k = max(1, min(int(data.get("top_k", 5)), 15))
-                if not text or not answer:
-                    self._send_json({"error": "Both sentence and answer are required."}, status=400)
-                    return
-
-                candidates, probs = model.predict_next(text, top_k=top_k)
-                top1 = candidates[0] if candidates else ""
-                new_score, delta, message = update_score(score_state["score"], answer, top1)
+                new_score, delta, message = score_ai_guess(
+                    score_state["score"], ai_guess, actual_word
+                )
                 score_state["score"] = new_score
 
-                if answer.lower() in UNSURE_ANSWERS:
-                    full_sentence = text
-                else:
-                    full_sentence = f"{text} {answer}"
-
+                full_sentence = f"{prefix} {actual_word}"
                 ppl = model.compute_perplexity(full_sentence)
                 model.train_sentence(full_sentence)
 
@@ -98,13 +90,13 @@ def make_handler(model, log_path: Path):
                     log_path,
                     {
                         "model": "ngram",
-                        "input": text,
+                        "input": prefix,
                         "top_candidates": [
                             {"word": w, "probability": round(p, 6)}
                             for w, p in zip(candidates, probs)
                         ],
-                        "top1_prediction": top1,
-                        "user_answer": answer,
+                        "ai_guess": ai_guess,
+                        "actual_word": actual_word,
                         "score_change": delta,
                         "score": new_score,
                         "perplexity": round(ppl, 2),
@@ -112,12 +104,18 @@ def make_handler(model, log_path: Path):
                 )
                 self._send_json(
                     {
+                        "prefix": prefix,
+                        "actual_word": actual_word,
+                        "ai_guess": ai_guess,
+                        "is_unsure": is_unsure,
+                        "candidates": [
+                            {"word": w, "probability": round(p, 6)}
+                            for w, p in zip(candidates, probs)
+                        ],
+                        "perplexity": round(ppl, 2),
                         "score": new_score,
                         "delta": delta,
                         "message": message,
-                        "top1": top1,
-                        "full_sentence": full_sentence,
-                        "perplexity": round(ppl, 2),
                         "history": history[-20:][::-1],
                     }
                 )
@@ -126,7 +124,7 @@ def make_handler(model, log_path: Path):
             if self.path == "/api/generate":
                 prompt = str(data.get("text", "")).strip()
                 mode = str(data.get("mode", "sentence"))
-                max_words = 5 if mode == "phrase" else 10
+                max_words = 4 if mode == "phrase" else 9
                 generated = model.generate_sentence(prompt, max_new_words=max_words)
                 ppl = model.compute_perplexity(generated)
                 self._send_json({"generated": generated, "perplexity": round(ppl, 2)})

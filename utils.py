@@ -245,6 +245,51 @@ def update_score(score: int, answer: str, top1: str) -> tuple[int, int, str]:
     return score - 1, -1, "Wrong guess. -1 from score."
 
 
+def ai_guess_next(
+    model,
+    tokenizer,
+    prefix: str,
+    top_k: int = 5,
+    unsure_threshold: float = 0.015,
+) -> tuple[str, bool, list[str], list[float]]:
+    """Have the AI model guess the next word, or say 'I don't know' / 'I am not sure'
+    when its top-1 probability is below unsure_threshold or the context is unseen.
+
+    Returns (ai_guess, is_unsure, candidates, probs).
+    """
+    candidates, probs = predict_next(model, tokenizer, prefix, top_k=top_k)
+    if not candidates or not probs:
+        return "I don't know", True, [], []
+
+    if isinstance(model, NGramLanguageModel):
+        tokens = _tokenize(prefix)
+        w2 = tokens[-2] if len(tokens) >= 2 else "<s>"
+        w1 = tokens[-1] if len(tokens) >= 1 else "<s>"
+        if w1 not in model.bigrams and (w2, w1) not in model.trigrams:
+            return "I don't know", True, candidates, probs
+
+    top1, top1_prob = candidates[0], probs[0]
+    if top1_prob < unsure_threshold:
+        phrase = "I am not sure" if top1_prob >= unsure_threshold * 0.6 else "I don't know"
+        return phrase, True, candidates, probs
+
+    return top1, False, candidates, probs
+
+
+def score_ai_guess(score: int, ai_guess: str, actual_word: str) -> tuple[int, int, str]:
+    """Score the AI's guess against the actual next word.
+
+    - AI says 'I don't know' / 'I am not sure': +1
+    - AI guesses right: 0
+    - AI guesses wrong: -1
+    """
+    if ai_guess.strip().lower() in UNSURE_ANSWERS:
+        return score + 1, 1, f"AI said '{ai_guess}' (+1 to score)."
+    if ai_guess.strip().lower() == actual_word.strip().lower():
+        return score, 0, f"AI guessed '{ai_guess}' right! (0 change)."
+    return score - 1, -1, f"AI guessed '{ai_guess}' instead of '{actual_word}' (-1 from score)."
+
+
 def load_score_log(log_path: str | Path) -> list[dict]:
     """Load existing score log entries from a JSON file, or return an empty list."""
     path = Path(log_path)
