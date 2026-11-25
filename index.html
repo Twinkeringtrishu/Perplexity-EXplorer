@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Perplexity Explorer</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2e;
+      --panel-2: #1a2340;
+      --border: #28345a;
+      --text: #eef2ff;
+      --muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-2: #22d3ee;
+      --good: #22c55e;
+      --bad: #ef4444;
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at top right, #1e1b4b 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+    }
+    .title h1 {
+      margin: 0;
+      font-size: 1.45rem;
+      letter-spacing: -0.02em;
+    }
+    .title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .score-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .score-pill {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 16px;
+      text-align: right;
+    }
+    .score-pill .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .score-pill .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    .delta {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .delta.pos { color: var(--good); }
+    .delta.neg { color: var(--bad); }
+    .delta.zero { color: var(--accent-2); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+    }
+    @media (max-width: 820px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.96rem;
+      outline: none;
+    }
+    textarea:focus, input:focus {
+      border-color: var(--accent);
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.08s ease, opacity 0.15s ease;
+    }
+    button:hover { opacity: 0.92; }
+    button:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+    .btn-unsure { background: rgba(34, 197, 94, 0.16); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); }
+    .btn-danger { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); }
+
+    .word-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .chip {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.84rem;
+      cursor: pointer;
+    }
+    .chip:hover { border-color: var(--accent-2); }
+
+    .cand-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .cand-item {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+    }
+    .cand-item:hover { border-color: var(--accent); }
+    .cand-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.92rem;
+      margin-bottom: 6px;
+    }
+    .bar-bg {
+      height: 7px;
+      background: #0d1324;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 999px;
+    }
+
+    .ppl-box {
+      margin-top: 14px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .ppl-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--accent-2);
+    }
+    .status-banner {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      display: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .muted { color: var(--muted); font-size: 0.86rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="title">
+        <h1>Perplexity Explorer</h1>
+        <p>Predict next words, compute perplexity, edit words manually, and auto-generate sentences &amp; phrases.</p>
+      </div>
+      <div class="score-box">
+        <div class="score-pill">
+          <div class="label">Score (+1 unsure / 0 right / -1 wrong)</div>
+          <div>
+            <span class="value" id="scoreValue">0</span>
+            <span class="delta zero" id="scoreDelta"></span>
+          </div>
+        </div>
+        <button class="btn-danger" id="resetBtn" title="Reset score & history">Reset</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>1. Sentence / Short Phrase Input &amp; Manual Word Edit</h2>
+        <label for="sentenceInput">Enter a sentence or short phrase (click any word chip below to edit it):</label>
+        <textarea id="sentenceInput" rows="2" placeholder="e.g., the quick brown">the quick brown</textarea>
+        <div class="word-chips" id="wordChips"></div>
+
+        <div class="row">
+          <div style="width: 110px;">
+            <label for="topKInput">Top-K</label>
+            <input id="topKInput" type="number" min="1" max="15" value="5" />
+          </div>
+          <button class="btn-primary" id="predictBtn" style="margin-top: 18px;">Predict Next Word</button>
+          <button class="btn-secondary" id="genSentenceBtn" style="margin-top: 18px;">Auto-Generate Sentence</button>
+          <button class="btn-secondary" id="genPhraseBtn" style="margin-top: 18px;">Auto-Generate Phrase</button>
+        </div>
+
+        <div id="generatedBox" class="status-banner">
+          <div class="muted">Automated output (perplexity: <strong id="genPpl">-</strong>):</div>
+          <div id="generatedText" style="margin: 6px 0; font-weight: 600;"></div>
+          <button class="btn-secondary" id="useGeneratedBtn">Use This as Input</button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border); margin: 18px 0;" />
+
+        <h2>2. Submit Actual Next Word &amp; Update Score</h2>
+        <label for="answerInput">Type the actual next word (or click a candidate / unsure button):</label>
+        <div class="row" style="margin-top: 4px;">
+          <input id="answerInput" type="text" placeholder="e.g., fox" style="flex: 1; min-width: 160px;" />
+          <button class="btn-primary" id="submitAnswerBtn">Check &amp; Score</button>
+        </div>
+        <div class="row">
+          <button class="btn-unsure" id="idkBtn">I don't know (+1)</button>
+          <button class="btn-unsure" id="unsureBtn">I am not sure (+1)</button>
+        </div>
+        <div id="answerStatus" class="status-banner"></div>
+      </div>
+
+      <div class="card">
+        <h2>Next-Word Probabilities &amp; Perplexity</h2>
+        <div class="ppl-box">
+          <span class="muted">Sentence Perplexity</span>
+          <span class="ppl-value" id="pplValue">—</span>
+        </div>
+        <div id="candList" class="cand-list">
+          <p class="muted">Click <strong>Predict Next Word</strong> to view top candidates and probabilities.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Round History (Saved to <code>score_log.json</code>)</h2>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Input</th>
+              <th>Top-1 Guess</th>
+              <th>Answer</th>
+              <th>Change</th>
+              <th>Score</th>
+              <th>Perplexity</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="6" class="muted">No rounds recorded yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sentenceInput = document.getElementById("sentenceInput");
+    const wordChips = document.getElementById("wordChips");
+    const topKInput = document.getElementById("topKInput");
+    const candList = document.getElementById("candList");
+    const pplValue = document.getElementById("pplValue");
+    const answerInput = document.getElementById("answerInput");
+    const answerStatus = document.getElementById("answerStatus");
+    const scoreValue = document.getElementById("scoreValue");
+    const scoreDelta = document.getElementById("scoreDelta");
+    const historyBody = document.getElementById("historyBody");
+    const generatedBox = document.getElementById("generatedBox");
+    const generatedText = document.getElementById("generatedText");
+    const genPpl = document.getElementById("genPpl");
+
+    function renderWordChips() {
+      const words = sentenceInput.value.trim().split(/\s+/).filter(Boolean);
+      wordChips.innerHTML = "";
+      words.forEach((word, idx) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = word;
+        chip.title = "Click to manually edit this word";
+        chip.onclick = () => {
+          const replacement = prompt(`Replace "${word}" with:`, word);
+          if (replacement !== null) {
+            const trimmed = replacement.trim();
+            if (trimmed) {
+              words[idx] = trimmed;
+            } else {
+              words.splice(idx, 1);
+            }
+            sentenceInput.value = words.join(" ");
+            renderWordChips();
+            predict();
+          }
+        };
+        wordChips.appendChild(chip);
+      });
+    }
+
+    function renderHistory(history) {
+      if (!history || history.length === 0) {
+        historyBody.innerHTML = '<tr><td colspan="6" class="muted">No rounds recorded yet.</td></tr>';
+        return;
+      }
+      historyBody.innerHTML = history.map(item => {
+        const d = item.score_change > 0 ? `+${item.score_change}` : `${item.score_change}`;
+        const cls = item.score_change > 0 ? "pos" : item.score_change < 0 ? "neg" : "zero";
+        return `<tr>
+          <td>${escapeHtml(item.input)}</td>
+          <td><code>${escapeHtml(item.top1_prediction)}</code></td>
+          <td>${escapeHtml(item.user_answer)}</td>
+          <td><span class="delta ${cls}">${d}</span></td>
+          <td><strong>${item.score}</strong></td>
+          <td>${item.perplexity}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    async function loadState() {
+      const res = await fetch("/api/state");
+      const data = await res.json();
+      scoreValue.textContent = data.score;
+      renderHistory(data.history);
+    }
+
+    async function predict() {
+      const text = sentenceInput.value.trim();
+      if (!text) return;
+      const res = await fetch("/api/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, top_k: Number(topKInput.value || 5) })
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+      pplValue.textContent = data.perplexity;
+      const maxP = Math.max(...data.candidates.map(c => c.probability), 0.0001);
+      candList.innerHTML = "";
+      data.candidates.forEach((c, idx) => {
+        const pct = (c.probability * 100).toFixed(2);
+        const width = Math.max(4, Math.round((c.probability / maxP) * 100));
+        const div = document.createElement("div");
+        div.className = "cand-item";
+        div.innerHTML = `
+          <div class="cand-head">
+            <span><strong>${idx + 1}. ${escapeHtml(c.word)}</strong></span>
+            <span>${c.probability.toFixed(4)} (${pct}%)</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="width:${width}%"></div></div>
+        `;
+        div.onclick = () => { answerInput.value = c.word; };
+        candList.appendChild(div);
+      });
+    }
+
+    async function submitAnswer(overrideAnswer = null) {
+      const text = sentenceInput.value.trim();
+      const answer = (overrideAnswer ?? answerInput.value).trim();
+      if (!text || !answer) return;
+      const res = await fetch("/api/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, answer, top_k: Number(topKInput.value || 5) })
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+
+      scoreValue.textContent = data.score;
+      const d = data.delta > 0 ? `+${data.delta}` : `${data.delta}`;
+      scoreDelta.textContent = `(${d})`;
+      scoreDelta.className = `delta ${data.delta > 0 ? "pos" : data.delta < 0 ? "neg" : "zero"}`;
+      pplValue.textContent = data.perplexity;
+
+      answerStatus.style.display = "block";
+      answerStatus.innerHTML = `<strong>${escapeHtml(data.message)}</strong> Full text: <em>"${escapeHtml(data.full_sentence)}"</em> — Perplexity: <strong>${data.perplexity}</strong>`;
+      renderHistory(data.history);
+    }
+
+    async function generate(mode) {
+      const text = sentenceInput.value.trim();
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, mode })
+      });
+      const data = await res.json();
+      generatedText.textContent = data.generated;
+      genPpl.textContent = data.perplexity;
+      generatedBox.style.display = "block";
+    }
+
+    sentenceInput.addEventListener("input", renderWordChips);
+    document.getElementById("predictBtn").onclick = predict;
+    document.getElementById("submitAnswerBtn").onclick = () => submitAnswer();
+    document.getElementById("idkBtn").onclick = () => submitAnswer("i don't know");
+    document.getElementById("unsureBtn").onclick = () => submitAnswer("i am not sure");
+    document.getElementById("genSentenceBtn").onclick = () => generate("sentence");
+    document.getElementById("genPhraseBtn").onclick = () => generate("phrase");
+    document.getElementById("useGeneratedBtn").onclick = () => {
+      sentenceInput.value = generatedText.textContent;
+      renderWordChips();
+      predict();
+    };
+    document.getElementById("resetBtn").onclick = async () => {
+      const res = await fetch("/api/reset", { method: "POST" });
+      const data = await res.json();
+      scoreValue.textContent = data.score;
+      scoreDelta.textContent = "";
+      answerStatus.style.display = "none";
+      renderHistory(data.history);
+    };
+
+    renderWordChips();
+    loadState();
+    predict();
+  </script>
+</body>
+</html>
