@@ -1,5 +1,6 @@
 import argparse
 from utils import (
+    NGramLanguageModel,
     UNSURE_ANSWERS,
     append_score_log,
     compute_perplexity,
@@ -15,8 +16,13 @@ def main():
     parser = argparse.ArgumentParser(description="Perplexity Explorer Interactive CLI")
     parser.add_argument(
         "--model",
-        default="gpt2",
-        help="HuggingFace model identifier (e.g., gpt2, gpt2-medium, EleutherAI/pythia-1.4b)",
+        default="ngram",
+        help="Model to use: 'ngram' (built-in, zero download) or a HuggingFace model ID",
+    )
+    parser.add_argument(
+        "--corpus",
+        default=None,
+        help="Optional path to a plain-text corpus file to train the built-in n-gram model",
     )
     parser.add_argument(
         "--top-k",
@@ -45,7 +51,7 @@ def main():
     else:
         score = existing_log[-1].get("score", 0)
 
-    model, tokenizer = load_model(args.model)
+    model, tokenizer = load_model(args.model, corpus_path=args.corpus)
 
     print(f"Welcome to Perplexity Explorer! (model={args.model}, top_k={args.top_k})")
     print(f"Persistent score log: {args.log_file} | Starting score: {score}")
@@ -97,6 +103,10 @@ def main():
         ppl = compute_perplexity(model, tokenizer, full_sentence)
         print(f"Perplexity of '{full_sentence}': {ppl:.2f}")
 
+        # Let the built-in n-gram model learn from the user's new sentence/phrase
+        if isinstance(model, NGramLanguageModel):
+            model.train_sentence(full_sentence)
+
         append_score_log(
             args.log_file,
             {
@@ -114,10 +124,10 @@ def main():
         )
         print(f"Saved round to {args.log_file}.\n")
 
-        gen = input("Generate a new sentence from the model? (y/n): ").strip().lower()
+        gen = input("Generate a new sentence/phrase from the model? (y/n): ").strip().lower()
         if gen == "y":
             generated = generate_sentence(model, tokenizer, full_sentence)
-            print(f"Generated sentence: {generated}")
+            print(f"Generated: {generated}")
             reuse = input("Use this generated sentence as the next input? (y/n): ").strip().lower()
             if reuse == "y":
                 current_seed = generated
